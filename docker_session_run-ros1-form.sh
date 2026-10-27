@@ -9,9 +9,13 @@ BAG_OUTPUT_CONTAINER='/ros_ws/recordings'
 RECORDED_BAG_NAME="recorded-form.bag"
 HDMAPPING_OUT_NAME="output_hdmapping"
 
-LIDAR_TOPIC=/livox/pointcloud
-LIDAR_NUM_ROWS=6 
-LIDAR_NUM_COLS=4000
+# Canonical bag (Hesai QT64): 64 rings, 1200 points per ring per scan (600
+# azimuths, two returns each), as FORM's own evalio loader describes it.
+LIDAR_TOPIC=/lidar/pointcloud
+LIDAR_NUM_ROWS=64
+LIDAR_NUM_COLS=1200
+LIDAR_MIN_RANGE=0.5
+LIDAR_MAX_RANGE=60
 
 usage() {
   echo "Usage:"
@@ -93,6 +97,7 @@ docker run -it --rm \
   --network host \
   -e DISPLAY=$DISPLAY \
   -e ROS_HOME=/tmp/.ros \
+  -e DISABLE_ROS1_EOL_WARNINGS=1 \
   -u 1000:1000 \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$DATASET_HOST_PATH":"$DATASET_CONTAINER_PATH":ro \
@@ -114,7 +119,7 @@ roscore
     tmux send-keys -t '"$TMUX_SESSION"' '\''sleep 5
 source /opt/ros/noetic/setup.bash
 source /ros_ws/devel/setup.bash
-roslaunch form_ros_node form.launch use_sim_time:=true input_topic:='"$LIDAR_TOPIC"' num_rows:='"$LIDAR_NUM_ROWS"' num_columns:='"$LIDAR_NUM_COLS"'
+roslaunch form_ros_node form.launch use_sim_time:=true input_topic:='"$LIDAR_TOPIC"' num_rows:='"$LIDAR_NUM_ROWS"' num_columns:='"$LIDAR_NUM_COLS"' min_range:='"$LIDAR_MIN_RANGE"' max_range:='"$LIDAR_MAX_RANGE"'
 '\'' C-m
 
     # ---------- PANE 2: rosbag record ----------
@@ -209,6 +214,7 @@ docker run -it --rm \
   --network host \
   -e DISPLAY="$DISPLAY" \
   -e ROS_HOME=/tmp/.ros \
+  -e DISABLE_ROS1_EOL_WARNINGS=1 \
   -u 1000:1000 \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$BAG_OUTPUT_HOST":"$BAG_OUTPUT_CONTAINER" \

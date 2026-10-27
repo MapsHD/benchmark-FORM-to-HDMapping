@@ -29,7 +29,9 @@ static int g_num_columns = 1024;
 // Convert sensor_msgs/PointCloud2 to a row-major scan vector expected by FORM.
 // The output vector has num_rows * num_columns entries; invalid slots are NaN.
 // Three strategies:
-//   1. Organized + ring field  → use ring value as row index (best accuracy)
+//   1. Ring field              → use ring value as row index (best accuracy); the
+//                                column is the point's index in an organized cloud,
+//                                or its arrival order within the ring otherwise
 //   2. Organized, no ring      → use row = point_index / width
 //   3. Unorganized             → bucket by elevation angle
 static std::vector<form::PointXYZf>
@@ -55,11 +57,15 @@ cloud_to_form(const sensor_msgs::PointCloud2::ConstPtr& msg,
 
     if (has_ring) {
         sensor_msgs::PointCloud2ConstIterator<uint16_t> iter_ring(*msg, "ring");
+        std::vector<int> col_fill(num_rows, 0);
         for (size_t i = 0; i < point_count; ++i, ++iter_x, ++iter_y, ++iter_z, ++iter_ring) {
             int ring = static_cast<int>(*iter_ring);
-            int col  = static_cast<int>(i % width);
-            if (ring < 0 || ring >= num_rows || col < 0 || col >= num_columns) continue;
+            if (ring < 0 || ring >= num_rows) continue;
             if (!std::isfinite(*iter_x) || !std::isfinite(*iter_y) || !std::isfinite(*iter_z)) continue;
+            // Unorganized (e.g. the benchmark's canonical cloud, sorted by time):
+            // i % width is the index in the whole cloud, so fill each ring in order.
+            int col = is_organized ? static_cast<int>(i % width) : col_fill[ring]++;
+            if (col < 0 || col >= num_columns) continue;
             scan[ring * num_columns + col] = form::PointXYZf(*iter_x, *iter_y, *iter_z);
         }
     } else if (is_organized) {
@@ -171,11 +177,17 @@ int main(int argc, char** argv)
     pnh.param<std::string>("input_topic", input_topic, "/velodyne_points");
     pnh.param<int>("num_rows",    g_num_rows,    64);
     pnh.param<int>("num_columns", g_num_columns, 1024);
+    // Valid range of a point; the defaults are FORM's own.
+    double min_range, max_range;
+    pnh.param<double>("min_range", min_range, 1.0);
+    pnh.param<double>("max_range", max_range, 100.0);
 
     // Configure and construct FORM estimator
     form::Estimator::Params params;
     params.extraction.num_rows    = static_cast<size_t>(g_num_rows);
     params.extraction.num_columns = static_cast<size_t>(g_num_columns);
+    params.extraction.min_norm_squared = min_range * min_range;
+    params.extraction.max_norm_squared = max_range * max_range;
     g_estimator = std::make_unique<form::Estimator>(params);
 
     g_odom_pub  = nh.advertise<nav_msgs::Odometry>("form/odometry", 10);
@@ -183,8 +195,8 @@ int main(int argc, char** argv)
 
     ros::Subscriber sub = nh.subscribe(input_topic, 10, cloudCallback);
 
-    ROS_INFO("FORM ROS node started. Input: %s  Geometry: %d rows x %d cols",
-             input_topic.c_str(), g_num_rows, g_num_columns);
+    ROS_INFO("FORM ROS node started. Input: %s  Geometry: %d rows x %d cols  Range: %.2f-%.1f m",
+             input_topic.c_str(), g_num_rows, g_num_columns, min_range, max_range);
 
     ros::spin();
     return 0;

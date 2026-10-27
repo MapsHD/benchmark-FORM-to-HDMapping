@@ -5,6 +5,9 @@
   <arg name="input_topic" default="/velodyne_points"/>
   <arg name="num_rows"    default="64"/>
   <arg name="num_columns" default="1024"/>
+  <!-- Valid point range [m]; the defaults are FORM's own -->
+  <arg name="min_range"   default="1.0"/>
+  <arg name="max_range"   default="100.0"/>
 
   <node pkg="form_ros_node" type="form_ros_node" name="form_ros_node" output="screen">
     <!-- Input point cloud topic (sensor_msgs/PointCloud2) -->
@@ -15,5 +18,7 @@
     <!-- Ouster OS1-64:    64 rows x 1024 columns -->
     <param name="num_rows"     value="$(arg num_rows)"/>
     <param name="num_columns"  value="$(arg num_columns)"/>
+    <param name="min_range"    value="$(arg min_range)"/>
+    <param name="max_range"    value="$(arg max_range)"/>
   </node>
 </launch>
